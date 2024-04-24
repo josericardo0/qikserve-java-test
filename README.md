@@ -1,4 +1,8 @@
-## This project uses the GSON library from Google. To make it work, first you will need to do the following instructions:
+## To run the API, first make sure you have downloaded the wiremock from: https://cdn-dev.preoday.com/test/mock-api.zip
+
+## Once downloaded, unzip and find the paste named "wiremock", double click the start.sh to run the wiremock, so you can run the API from your IDE.
+
+This project uses the GSON library from Google. To make it work, first you will need to do the following instructions:
 
 #### IntelliJ IDEA:
 
