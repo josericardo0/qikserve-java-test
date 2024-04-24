@@ -1,10 +1,6 @@
 import java.io.*;
 import java.net.*;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-
+import com.google.gson.*;
 
 public class GroceryStoreAPI {
 
@@ -22,87 +18,88 @@ public class GroceryStoreAPI {
             HttpURLConnection con = (HttpURLConnection) url.openConnection();
             con.setRequestMethod("GET");
 
-            BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-            String inputLine;
-            StringBuilder response = new StringBuilder();
-
-            while ((inputLine = in.readLine()) != null) {
-                response.append(inputLine);
-            }
-            in.close();
-
-            JsonArray products = JsonParser.parseString(response.toString()).getAsJsonArray();
-
-            for (JsonElement productElement : products) {
-                JsonObject product = productElement.getAsJsonObject();
-                String productId = product.get("id").getAsString();
-                String productName = product.get("name").getAsString();
-                int productPrice = product.get("price").getAsInt();
-                JsonArray promotions = product.getAsJsonArray("promotions");
-
-                int finalPrice = productPrice;
-
-                if (promotions != null) {
-                    finalPrice = applyPromotions(productPrice, promotions);
+            try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+                StringBuilder response = new StringBuilder();
+                String inputLine;
+                while ((inputLine = in.readLine()) != null) {
+                    response.append(inputLine);
                 }
 
-                int savings = productPrice - finalPrice;
-                totalSavings += savings;
+                JsonArray productsJson = JsonParser.parseString(response.toString()).getAsJsonArray();
 
-                System.out.println("Product ID: " + productId);
-                System.out.println("Product Name: " + productName);
-                System.out.println("Original Price: " + productPrice);
-                System.out.println("Final Price after Promotions: " + finalPrice);
-                System.out.println("Savings: " + savings);
-                System.out.println("---------------------------");
+                for (JsonElement productElement : productsJson) {
+                    JsonObject productJson = productElement.getAsJsonObject();
+                    Product product = parseProduct(productJson);
+                    int finalPrice = applyPromotions(product.price(), product.promotions());
+
+                    int savings = product.price() - finalPrice;
+                    totalSavings += savings;
+
+                    System.out.println("Product ID: " + product.id());
+                    System.out.println("Product Name: " + product.name());
+                    System.out.println("Original Price: " + product.price());
+                    System.out.println("Final Price after Promotions: " + finalPrice);
+                    System.out.println("Savings: " + savings);
+                    System.out.println("---------------------------");
+                }
             }
 
             System.out.println("Total Savings: " + totalSavings);
 
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("Error fetching or processing products: " + e.getMessage());
         }
     }
 
+    private Product parseProduct(JsonObject productJson) {
+        String id = productJson.get("id").getAsString();
+        String name = productJson.get("name").getAsString();
+        int price = productJson.get("price").getAsInt();
+        JsonArray promotions = productJson.getAsJsonArray("promotions");
+        return new Product(id, name, price, promotions);
+    }
+
     private int applyPromotions(int price, JsonArray promotions) {
+        if (promotions == null) {
+            return price;
+        }
+
         int finalPrice = price;
         for (JsonElement promotionElement : promotions) {
             JsonObject promotion = promotionElement.getAsJsonObject();
             String type = promotion.get("type").getAsString();
             switch (type) {
                 case "BUY_X_GET_Y_FREE":
-                    int requiredQty = promotion.get("required_qty").getAsInt();
-                    int freeQty = promotion.get("free_qty").getAsInt();
-                    finalPrice = applyBuyXGetYFreePromotion(price, requiredQty, freeQty);
+                    finalPrice = applyBuyXGetYFreePromotion(price, promotion);
                     break;
                 case "QTY_BASED_PRICE_OVERRIDE":
-                    int overrideQty = promotion.get("required_qty").getAsInt();
-                    int overridePrice = promotion.get("price").getAsInt();
-                    finalPrice = applyQtyBasedPriceOverride(price, overrideQty, overridePrice);
+                    finalPrice = applyQtyBasedPriceOverride(price, promotion);
                     break;
                 case "FLAT_PERCENT":
-                    int percent = promotion.get("amount").getAsInt();
-                    finalPrice = applyFlatPercentDiscount(price, percent);
+                    finalPrice = applyFlatPercentDiscount(price, promotion);
                     break;
+                default:
+                    System.err.println("Unknown promotion type: " + type);
             }
         }
         return finalPrice;
     }
 
-    private int applyBuyXGetYFreePromotion(int price, int requiredQty, int freeQty) {
+    private int applyBuyXGetYFreePromotion(int price, JsonObject promotion) {
+        int requiredQty = promotion.get("required_qty").getAsInt();
+        int freeQty = promotion.get("free_qty").getAsInt();
         int totalQty = requiredQty + freeQty;
-        int totalPrice = (price / requiredQty) * totalQty;
-        return totalPrice;
+        return (price / requiredQty) * totalQty;
     }
 
-    private int applyQtyBasedPriceOverride(int price, int requiredQty, int overridePrice) {
-        if (requiredQty <= 0) {
-            return price;
-        }
-        return overridePrice;
+    private int applyQtyBasedPriceOverride(int price, JsonObject promotion) {
+        int requiredQty = promotion.get("required_qty").getAsInt();
+        int overridePrice = promotion.get("price").getAsInt();
+        return requiredQty > 0 ? overridePrice : price;
     }
 
-    private int applyFlatPercentDiscount(int price, int percent) {
+    private int applyFlatPercentDiscount(int price, JsonObject promotion) {
+        int percent = promotion.get("amount").getAsInt();
         return price - (price * percent / 100);
     }
 }
